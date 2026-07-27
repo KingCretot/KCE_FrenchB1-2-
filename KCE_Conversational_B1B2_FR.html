@@ -97,6 +97,10 @@ h2{font-size:38px;margin-bottom:6px;font-weight:700}
 /* dialogue */
 .chat{display:flex;flex-direction:column;gap:14px;margin-top:6px}
 .bubble{max-width:78%;padding:14px 20px;border-radius:20px;font-size:21px;opacity:0;transform:translateY(10px);transition:opacity .35s,transform .35s}
+.speaker-btn{background:none;border:none;cursor:pointer;font-size:16px;vertical-align:middle;margin-right:6px;padding:2px 4px;border-radius:6px;opacity:.75;transition:opacity .15s,transform .15s}
+.speaker-btn:hover{opacity:1;transform:scale(1.15)}
+.speaker-btn.speaking{animation:speakerPulse .8s ease-in-out infinite}
+@keyframes speakerPulse{0%,100%{opacity:.75}50%{opacity:1;transform:scale(1.2)}}
 .bubble.show{opacity:1;transform:none}
 .bubble.p1{align-self:flex-start;background:#fff;border:2px solid var(--navy);border-bottom-left-radius:6px}
 .bubble.p2{align-self:flex-end;background:var(--navy);color:#fff;border-bottom-right-radius:6px}
@@ -355,7 +359,8 @@ function buildSession(n){
 
   +'<section class="slide"><div class="stepnum">Étape 7 sur 9 · Parle</div><div class="card">'
   +'<div class="eyebrow"><span>Parle · pratique en direct</span></div><h2>Tes missions de conversation</h2>'
-  +'<p class="sub">Fais-les à voix haute avec ton instructeur ou ton/ta partenaire. Coche chaque case une fois terminé.</p>'+missionsHTML+'</div>'
+  +'<p class="sub">Fais-les à voix haute avec ton instructeur ou ton/ta partenaire. Coche chaque case une fois terminé.</p>'
+  +'<p class="sub" style="font-style:italic">💬 Ce sont des amorces de conversation, pas des questions à une seule bonne réponse — il n\'y a pas de mauvaise façon de répondre. Sois naturel(le) !</p>'+missionsHTML+'</div>'
   +'<div class="card culture"><h3>Coin culture 🌎</h3><p>'+cur.culture[0]+'</p>'+G(cur.culture_fr&&cur.culture_fr[0]?cur.culture_fr[0]:'')+'<p>'+cur.culture[1]+'</p>'+G(cur.culture_fr&&cur.culture_fr[1]?cur.culture_fr[1]:'')+'</div>'
   +'<div class="navrow"><button class="btn" data-go="next">Suivant →</button></div></section>'
 
@@ -414,6 +419,39 @@ function handleCheck(btn){
     fb.textContent='Not quite — read it again and try another answer. You can do it!';
   }
 }
+/* ============ Text-to-speech (À l'écoute) ============ */
+/* Reuses the same /api/tutor/speak endpoint + ElevenLabs voice already live on
+   the C1-C2 tutor pages. NOTE: CORS blocks this from GitHub Pages subdomains
+   until the same-origin migration (parked, high priority) — falls back to
+   free browser voice until then; no rework needed once migrated. */
+var frVoice=null;
+function pickFrVoice(){
+  if(!('speechSynthesis' in window))return;
+  var voices=speechSynthesis.getVoices();
+  frVoice=voices.find(function(v){return v.lang==='fr-FR';})
+       || voices.find(function(v){return v.lang && v.lang.toLowerCase().indexOf('fr')===0;})
+       || null;
+}
+if('speechSynthesis' in window){pickFrVoice();speechSynthesis.onvoiceschanged=pickFrVoice;}
+function speakFallback(text){
+  if(!('speechSynthesis' in window))return;
+  speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance(text);
+  u.lang='fr-FR';if(frVoice)u.voice=frVoice;u.rate=0.95;
+  speechSynthesis.speak(u);
+}
+function speakLine(text,btnEl){
+  if(btnEl)btnEl.classList.add('speaking');
+  fetch('https://kingcretot.com/api/tutor/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:text,language:'fr'})})
+    .then(function(res){if(!res.ok)throw new Error('speak HTTP '+res.status);return res.blob();})
+    .then(function(blob){
+      var audio=new Audio(URL.createObjectURL(blob));
+      audio.onended=function(){if(btnEl)btnEl.classList.remove('speaking');};
+      audio.onerror=function(){if(btnEl)btnEl.classList.remove('speaking');speakFallback(text);};
+      audio.play();
+    })
+    .catch(function(){if(btnEl)btnEl.classList.remove('speaking');speakFallback(text);});
+}
 function nextLine(){
   var btn=document.getElementById('chatbtn');
   if(chatIdx>=cur.chat.length){btn.textContent='C\'est toute la conversation ✓';return;}
@@ -421,10 +459,11 @@ function nextLine(){
   var lfr=(cur.cfr&&cur.cfr[chatIdx-1])?cur.cfr[chatIdx-1]:'';
   var b=document.createElement('div');
   b.className='bubble '+L[0];
-  b.innerHTML='<span class="who">'+escapeHTML(L[1])+'</span>'+escapeHTML(L[2])+G(lfr);
+  b.innerHTML='<span class="who">'+escapeHTML(L[1])+'</span><button class="speaker-btn" data-speak="'+escapeHTML(L[2]).replace(/"/g,'&quot;')+'" aria-label="Écouter">🔊</button>'+escapeHTML(L[2])+G(lfr);
   document.getElementById('chat').appendChild(b);
   requestAnimationFrame(function(){requestAnimationFrame(function(){b.classList.add('show');});});
   sFlip();
+  speakLine(L[2], b.querySelector('.speaker-btn'));
   if(chatIdx>=cur.chat.length)btn.textContent='C\'est toute la conversation ✓';
 }
 function handleMatch(t){
@@ -517,6 +556,7 @@ document.addEventListener('click',function(e){
   var ck=t.closest('[data-check]');  if(ck){handleCheck(ck);return;}
   var fl=t.closest('[data-flip]');   if(fl){fl.classList.toggle('flipped');sFlip();return;}
   var ch=t.closest('[data-chat]');   if(ch){nextLine();return;}
+  var sp=t.closest('.speaker-btn');  if(sp){speakLine(sp.getAttribute('data-speak'),sp);return;}
   var mi=t.closest('.mitem');        if(mi){handleMatch(mi);return;}
   var tv=t.closest('[data-tireveal]');if(tv){revealTI(parseInt(tv.getAttribute('data-tireveal'),10));return;}
   var tb=t.closest('[data-ti]');     if(tb){checkTI(parseInt(tb.getAttribute('data-ti'),10));return;}
