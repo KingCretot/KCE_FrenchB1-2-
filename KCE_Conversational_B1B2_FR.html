@@ -186,6 +186,12 @@ body.show-fr .fr-gloss{display:block}
   font-weight:800;font-size:16px;color:#C9D2E8;cursor:pointer;background:rgba(255,255,255,.06);
   border:1.5px solid rgba(224,172,60,.4);border-radius:999px;padding:10px 22px}
 .home-lang b{color:var(--gold)}
+.namebox{max-width:560px;margin:26px auto 4px;background:#fff;border:2px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+.namebox label{color:var(--navy);font-size:18px}
+.namebox input{font-family:'Nunito',sans-serif;font-size:19px;padding:10px 14px;border:2px solid var(--navy);border-radius:12px;margin:8px 0 4px;width:100%;max-width:360px}
+.nametip{color:#5A6584;font-size:15px;margin-top:4px}
+.namewarn{color:var(--maroon);font-weight:800;font-size:16px;margin-top:6px}
+.namebox.need{border-color:var(--maroon)}
 </style>
 </head>
 <body>
@@ -212,6 +218,7 @@ body.show-fr .fr-gloss{display:block}
       pendant 6 semaines, ou une fois par semaine pendant 12 semaines — chaque leçon fonctionne dans les deux cas.
     </p>
   </div>
+  <div class="namebox center"><label for="stuName"><b>Ton prénom et ton nom</b></label> <input id="stuName" autocomplete="name" placeholder="ex. : Marie Dupont"><p class="nametip">Tes résultats sont envoyés à ton instructeur KCE.</p><p class="namewarn" id="nameWarn" hidden>Écris ton prénom et ton nom avant de commencer une leçon.</p></div>
   <div id="menu"></div>
   <p class="center" style="margin:2px 0 20px"><span class="home-lang" id="homelang" hidden aria-hidden="true" style="display:none"></span></p>
   <div class="footerline" style="color:#7d88a3;border-color:var(--line)">
@@ -285,7 +292,7 @@ function mcHTML(holder,items,letterSlice){
 /* ---------- build a session ---------- */
 function buildSession(n){
   cur=SESSIONS[n];cur.n=n;
-  score=0;firstTry={};solved={};MC_PTS={};msel=null;spoiled={};tiFirst={};tiDone={};tiTries={};chatIdx=0;celebrated=false;
+  score=0;firstTry={};solved={};MC_PTS={};msel=null;spoiled={};tiFirst={};tiDone={};tiTries={};chatIdx=0;celebrated=false;mcTries={};ansLog={mc:{},ti:{}};resultSent=false;
   cur.wu.forEach(function(q,i){MC_PTS['wu-'+i]=q.p;if(cur.wu_fr&&cur.wu_fr[i])q.q_fr=cur.wu_fr[i];});
   cur.pq.forEach(function(q,i){MC_PTS['pq-'+i]=q.p;if(cur.pq_fr&&cur.pq_fr[i])q.q_fr=cur.pq_fr[i];});
   cur.boss.forEach(function(q,i){MC_PTS['boss-'+i]=q.p;if(cur.boss_fr&&cur.boss_fr[i])q.q_fr=cur.boss_fr[i];});
@@ -409,7 +416,7 @@ function revealMC(key){
   if(solved[key])return;
   var opts=document.querySelectorAll('.opt[data-check="'+key+'"]'),ans=null;
   opts.forEach(function(b){if(b.getAttribute('data-c')==='1'){ans=b;}else{b.style.opacity=.45;b.style.pointerEvents='none';}});
-  solved[key]=true;firstTry[key]=false;
+  solved[key]=true;firstTry[key]=false;(ansLog.mc[key]=ansLog.mc[key]||{picks:[]}).revealed=true;
   if(ans){ans.classList.add('correct');ans.style.opacity=1;}
   var fb=document.getElementById('fb-'+key);
   fb.className='feedback try';
@@ -419,6 +426,7 @@ function handleCheck(btn){
   var key=btn.getAttribute('data-check');
   if(solved[key])return;
   var ok=btn.getAttribute('data-c')==='1';
+  logPick(key,btn,ok);
   var fb=document.getElementById('fb-'+key);
   if(ok){
     solved[key]=true;btn.classList.add('correct');sGood();
@@ -433,7 +441,7 @@ function handleCheck(btn){
     btn.classList.remove('shake');void btn.offsetWidth;btn.classList.add('shake');
     btn.style.opacity=.45;btn.style.pointerEvents='none';
     fb.className='feedback try';
-    fb.innerHTML='Not quite — read it again and try another answer. You can do it!'+(mcTries[key]>=2?' <button class="btn small" data-mcreveal="'+key+'">Voir la réponse</button>':'');
+    fb.innerHTML='Pas tout à fait — relis et essaie une autre réponse. Tu peux le faire !'+(mcTries[key]>=2?' <button class="btn small" data-mcreveal="'+key+'">Voir la réponse</button>':'');
   }
 }
 /* ============ Text-to-speech (À l'écoute) ============ */
@@ -513,6 +521,7 @@ function checkTI(i){
   if(tiDone[i])return;
   var inp=document.getElementById('ti-'+i);
   var val=inp.value.trim().toLowerCase().replace(/[.!?]$/,'');
+  if(inp.value.trim())(ansLog.ti[i]=ansLog.ti[i]||{tries:[]}).tries.push(inp.value.trim());
   var fb=document.getElementById('tifb-'+i);
   if(cur.ti[i].a.indexOf(val)>-1){
     tiDone[i]=true;inp.classList.add('good');inp.disabled=true;sGood();
@@ -523,7 +532,7 @@ function checkTI(i){
     tiFirst[i]=false;sBad();
     tiTries[i]=(tiTries[i]||0)+1;
     fb.className='feedback try';
-    fb.innerHTML='Almost — check the spelling and try again.'+(tiTries[i]>=2?' <button class="btn small" data-tireveal="'+i+'">Voir la réponse</button>':'');
+    fb.innerHTML='Presque — vérifie l’orthographe et réessaie.'+(tiTries[i]>=2?' <button class="btn small" data-tireveal="'+i+'">Voir la réponse</button>':'');
     inp.classList.add('shake');setTimeout(function(){inp.classList.remove('shake');},420);
   }
 }
@@ -533,7 +542,7 @@ function revealTI(i){
   var fb=document.getElementById('tifb-'+i);
   var ans=cur.ti[i].a[0];
   inp.value=ans;inp.disabled=true;inp.classList.add('good');
-  tiDone[i]=true;tiFirst[i]=false;
+  tiDone[i]=true;tiFirst[i]=false;(ansLog.ti[i]=ansLog.ti[i]||{tries:[]}).revealed=true;
   fb.className='feedback try';
   fb.innerHTML='Réponse : <b>'+escapeHTML(ans)+'</b> — pas de points cette fois, mais tu la connais maintenant.';
 }
@@ -542,11 +551,48 @@ function toggleMission(el){
   el.querySelector('.box').textContent=el.classList.contains('done')?'✓':'';
   if(el.classList.contains('done'))sGood();
 }
+
+/* ============ Results to KCE (Jonathan + Fabrice via Formspree) ============ */
+var RESULTS_FE="";   // Formspree form "KCE French Course Results" — emails both instructors
+var COURSE="KCE Français Conversationnel B1–B2";
+var ansLog={mc:{},ti:{}},resultSent=false;
+function getStudent(){try{return localStorage.getItem('kce_fr_student')||'';}catch(e){return '';}}
+function setStudent(v){try{localStorage.setItem('kce_fr_student',v);}catch(e){}}
+function optText(b){var c=b.cloneNode(true);c.querySelectorAll('.tag,.speaker-btn,.fr-gloss').forEach(function(x){x.remove();});return c.textContent.trim();}
+function logPick(key,btn,ok){var L=(ansLog.mc[key]=ansLog.mc[key]||{picks:[]});L.picks.push(optText(btn)+(ok?' ✓':' ✗'));}
+function resultsText(){
+  var SEC={wu:'Échauffement',pq:'Apprendre et pratiquer',boss:'Niveau final'},out=[],gaps=0;
+  ['wu','pq','boss'].forEach(function(h){(cur[h]||[]).forEach(function(q,i){
+    var L=ansLog.mc[h+'-'+i]||{picks:[]},first=L.picks.length&&/✓$/.test(L.picks[0]);
+    if(!first)gaps++;
+    out.push(SEC[h]+' Q'+(i+1)+' : '+q.q+'\n   Réponses de l’élève : '+(L.picks.length?L.picks.join('  →  '):'(non répondu)')+(L.revealed?'  →  a demandé la réponse':'')+'\n   Bonne réponse : '+q.a+(first?'   [réussi du premier coup]':'   [À REVOIR]'));
+  });});
+  (cur.ti||[]).forEach(function(t,i){
+    var L=ansLog.ti[i]||{tries:[]},ok=function(v){return t.a.indexOf(v.toLowerCase().replace(/[.!?]$/,''))>-1;},first=L.tries.length&&ok(L.tries[0]);
+    if(!first)gaps++;
+    out.push('Écris-le Q'+(i+1)+' : '+t.q+'\n   Réponses de l’élève : '+(L.tries.length?L.tries.map(function(v){return v+(ok(v)?' ✓':' ✗');}).join('  →  '):'(non répondu)')+(L.revealed?'  →  a demandé la réponse':'')+'\n   Bonne réponse : '+t.a[0]+(first?'   [réussi du premier coup]':'   [À REVOIR]'));
+  });
+  return {text:out.join('\n\n'),gaps:gaps,total:out.length};
+}
+function sendResults(){
+  if(resultSent)return;resultSent=true;
+  try{
+    var R=resultsText(),who=getStudent()||'Élève (nom non saisi)';
+    var body={_subject:COURSE.replace('KCE Français Conversationnel','KCE Français')+' | Leçon '+(cur.n+1)+' · '+cur.t+' | '+who+' | '+score+'/'+cur.max,
+      eleve:who,cours:COURSE,lecon:'Leçon '+(cur.n+1)+' · '+cur.t,points:score+' / '+cur.max,
+      a_revoir:R.gaps+' question(s) sur '+R.total+' à revoir',date:new Date().toLocaleString('fr-FR',{timeZone:'America/New_York'})+' (heure de New York)',
+      detail:R.text};
+    if(RESULTS_FE)fetch(RESULTS_FE,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)}).catch(function(){});
+    window.__lastResults=body;
+  }catch(e){}
+}
+(function(){var ni=document.getElementById('stuName');if(!ni)return;ni.value=getStudent();ni.addEventListener('input',function(){setStudent(ni.value.trim());if(ni.value.trim()){document.querySelector('.namebox').classList.remove('need');document.getElementById('nameWarn').hidden=true;}});})();
 function finish(){
   document.getElementById('finalpts').textContent=score;
   var deg=Math.round(360*Math.min(1,score/cur.max));
   document.getElementById('ring').style.background='conic-gradient(var(--gold) '+deg+'deg, rgba(255,255,255,.12) '+deg+'deg)';
   if(!(cur.n in sessionScores)||score>sessionScores[cur.n])sessionScores[cur.n]=score;
+  sendResults();
   if(!celebrated){celebrated=true;confetti();sGood();setTimeout(sGood,250);}
 }
 function confetti(){
@@ -571,7 +617,7 @@ document.addEventListener('click',function(e){
   var t=e.target;
   var sp=t.closest('.speaker-btn');  if(sp){e.preventDefault();e.stopPropagation();speakLine(sp.getAttribute('data-speak'),sp);return;}
   var lng=t.closest('#langbtn,#homelang'); if(lng){toggleFR();return;}
-  var sc=t.closest('[data-session]');if(sc){buildSession(parseInt(sc.getAttribute('data-session'),10));return;}
+  var sc=t.closest('[data-session]');if(sc){var ni=document.getElementById('stuName');if(ni&&ni.value.trim())setStudent(ni.value.trim());if(!getStudent()){var nb=document.querySelector('.namebox');nb.classList.add('need');document.getElementById('nameWarn').hidden=false;ni.focus();nb.scrollIntoView({behavior:'smooth',block:'center'});return;}buildSession(parseInt(sc.getAttribute('data-session'),10));return;}
   var mn=t.closest('[data-menu]');   if(mn){showMenu();return;}
   var go=t.closest('[data-go]');     if(go){goTo(go.getAttribute('data-go')==='next'?slide+1:parseInt(go.getAttribute('data-go'),10));return;}
   var ck=t.closest('[data-check]');  if(ck){handleCheck(ck);return;}
